@@ -331,8 +331,10 @@ jobs:
             patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             echo "Applying hooks for SukiSU..."
-            cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
-            patch -p1 -F 3 < syscall_hooks.patch
+            curl -LSs https://github.com/Tools-cx-app/gki_patch/raw/main/0001-KernelSU-Support-tracepoint-hook-type.patch -o tp_hooks.patch
+            cp ../../SukiSU_patch/hooks/new_hooks.patch ./
+            patch -p1 -F 3 < new_hooks.patch
+            patch -p1 -F 3 < tp_hooks.patch
           fi
 
       - name: 复制源文件 & 应用LZ4KD & ZSTDN补丁
