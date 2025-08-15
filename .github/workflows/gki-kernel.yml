@@ -331,9 +331,7 @@ jobs:
             patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             echo "Applying hooks for SukiSU..."
-            curl -LSs https://github.com/Tools-cx-app/gki_patch/raw/main/0001-KernelSU-Support-tracepoint-hook-type.patch -o tp_hooks.patch
-            cp ../../SukiSU_patch/hooks/new_hooks.patch ./
-            patch -p1 -F 3 < new_hooks.patch
+            curl -LSs https://github.com/Tools-cx-app/gki_patch/raw/main/ksu_tracepoint_hooks_sukisu_5.10.236_0001.patch -o tp_hooks.patch
             patch -p1 -F 3 < tp_hooks.patch
           fi
 
