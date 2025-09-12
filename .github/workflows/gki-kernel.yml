@@ -324,7 +324,9 @@ jobs:
            
       - name: 添加tracepoint hook
         run: |
-          echo "CONFIG_KSU_TRACEPOINT_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
+          CONFIG_FILE="$CONFIG/common/arch/arm64/configs/gki_defconfig"
+          echo "CONFIG_KSU_TRACEPOINT_HOOK=y" >> $CONFIG_FILE
+          echo "CONFIG_KSU=y" >> $CONFIG_FILE
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
 
