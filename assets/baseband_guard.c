@@ -32,7 +32,7 @@
 #define BB_BYNAME_DIR "/dev/block/by-name"
 
 /* ===== Process SELinux domain whitelist (substring match) ===== */
-static const char * const allowed_domain_substrings[] __ro_after_init = {
+static const char * const allowed_domain_substrings[] = {
 	"update_engine",
 	"fastbootd",
 	"recovery",
@@ -54,7 +54,7 @@ static const size_t allowed_domain_substrings_cnt =
  * Keep system usability: userdata/cache/metadata/misc
  * Boot-related free-to-flash: boot/init_boot/dtbo/vendor_boot
  */
-static const char * const allowlist_names[] __ro_after_init = {
+static const char * const allowlist_names[] = {
 	"boot", "init_boot", "dtbo", "vendor_boot",
 	"userdata", "cache", "metadata", "misc",
 };
@@ -199,7 +199,22 @@ static __always_inline bool reverse_allow_match_and_cache(dev_t cur)
 	return false;
 }
 
-/* ===== SELinux domain whitelist (substring) + last SID cache ===== */
+/* ===== SELinux enforcing + domain whitelist (substring) ===== */
+#ifdef CONFIG_SECURITY_SELINUX
+#include <linux/selinux.h>   /* selinux_is_enabled() */
+extern int selinux_enforcing; /* 若树上无该符号，可在函数里改为保守返回 false */
+
+static __always_inline bool selinux_is_enforcing_now(void)
+{
+	if (!selinux_is_enabled())
+		return false;
+	/* 若链接时报 undefined reference，可替换为 `return false;`（保守：非 Enforcing 不放行域） */
+	return READ_ONCE(selinux_enforcing) != 0;
+}
+#else
+static __always_inline bool selinux_is_enforcing_now(void) { return false; }
+#endif
+
 #ifdef CONFIG_SECURITY_SELINUX
 static u32 sid_cache_last;
 static bool sid_cache_last_ok;
@@ -214,7 +229,7 @@ static __always_inline bool current_domain_allowed_fast(void)
 	char *ctx = NULL;
 	u32 len = 0;
 
-	/* 5.10+ 常见；若你的树缺失，可改成 security_task_getsecid(current,&sid) */
+	/* 5.10+ 常见接口；若你的树缺失，可换 security_task_getsecid(current, &sid); */
 	security_cred_getsecid(current_cred(), &sid);
 
 	if (sid && sid == sid_cache_last)
@@ -237,11 +252,11 @@ static __always_inline bool current_domain_allowed_fast(void)
 }
 
 /* ===== Logging throttles ===== */
-static unsigned int quiet_boot_ms __read_mostly = 10000; /* early boot quiet */
+static unsigned int quiet_boot_ms = 10000; /* early boot quiet */
 module_param(quiet_boot_ms, uint, 0644);
 MODULE_PARM_DESC(quiet_boot_ms, "Suppress deny logs during early boot window (ms)");
 
-static unsigned int per_dev_log_limit __read_mostly = 1; /* max logs per dev this boot */
+static unsigned int per_dev_log_limit = 1; /* max logs per dev this boot */
 module_param(per_dev_log_limit, uint, 0644);
 MODULE_PARM_DESC(per_dev_log_limit, "Max deny logs per block dev_t this boot");
 
@@ -341,19 +356,19 @@ static int bb_file_permission(struct file *file, int mask)
 
 	rdev = inode->i_rdev;
 
-	/* allowed domains (substring) → defer to SELinux */
-	if (unlikely(current_domain_allowed_fast()))
+	/* 域放行仅在 Enforcing 才生效；命中后交给 SELinux 决定 */
+	if (unlikely(selinux_is_enforcing_now() && current_domain_allowed_fast()))
 		return 0;
 
-	/* allowed partitions (cache) → defer to SELinux */
+	/* 分区白名单命中 → defer to SELinux */
 	if (likely(allow_has(rdev)))
 		return 0;
 
-	/* first-seen dev: one reverse resolve try; hit → cache & defer */
+	/* 首次遇到该 dev：尝试反查命中白名单则缓存并 defer */
 	if (unlikely(!denied_seen_has(rdev) && reverse_allow_match_and_cache(rdev)))
 		return 0;
 
-	/* miss: remember and deny */
+	/* miss：记忆并拒绝 */
 	denied_seen_add(rdev);
 	return deny("write to protected partition", file, 0);
 }
@@ -399,7 +414,7 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	rdev = inode->i_rdev;
 
-	if (unlikely(current_domain_allowed_fast()))
+	if (unlikely(selinux_is_enforcing_now() && current_domain_allowed_fast()))
 		return 0;
 
 	if (likely(allow_has(rdev)))
@@ -412,7 +427,6 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return deny("destructive ioctl on protected partition", file, cmd);
 }
 
-/* 6.6 一定有 file_ioctl_compat；5.10/5.15/6.1 可能没有，按版本注册 */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
 static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -421,7 +435,6 @@ static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned lo
 #define BB_HAVE_IOCTL_COMPAT 1
 #endif
 
-/* ===== LSM registration ===== */
 static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(file_permission,   bb_file_permission),
 	LSM_HOOK_INIT(file_ioctl,        bb_file_ioctl),
@@ -438,9 +451,7 @@ static int __init bbg_init(void)
 	bbg_slot_suffix = slot_suffix_from_cmdline_once();
 
 	bbg_boot_jiffies = jiffies;
-	pr_info("baseband_guard_perf: init (5.10~6.6) defer-allow to SELinux; dev caches; SID cache; "
-		"quiet=%ums per_dev=%u\n",
-		quiet_boot_ms, per_dev_log_limit);
+	pr_info("baseband_guard_all power by https://t.me/qdykernel\n");
 	return 0;
 }
 
