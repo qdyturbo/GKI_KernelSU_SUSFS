@@ -76,7 +76,7 @@ static const char *slot_suffix_from_cmdline_once(void)
 	return NULL;
 }
 
-/* ===== by-name → dev_t（统一实现，兼容 5.10~6.6；不再依赖 lookup_bdev 原型） ===== */
+/* ===== by-name → dev_t（统一实现，兼容 5.10~6.6；不依赖 lookup_bdev 原型） ===== */
 static __always_inline bool resolve_byname_dev(const char *name, dev_t *out)
 {
 	char *path;
@@ -86,7 +86,7 @@ static __always_inline bool resolve_byname_dev(const char *name, dev_t *out)
 
 	if (!name || !out) return false;
 
-	/* /dev/block/by-name/<name> 可能是符号链接；用 LOOKUP_FOLLOW 跟随到最终的设备节点 */
+	/* /dev/block/by-name/<name> 多为符号链接；FOLLOW 到最终设备节点 */
 	path = kasprintf(GFP_ATOMIC, "%s/%s", BB_BYNAME_DIR, name);
 	if (!path) return false;
 
@@ -105,7 +105,6 @@ static __always_inline bool resolve_byname_dev(const char *name, dev_t *out)
 	path_put(&p);
 	return true;
 }
-
 
 /* ===== Allowed dev_t cache ===== */
 struct allow_node { dev_t dev; struct hlist_node h; };
@@ -215,7 +214,7 @@ static __always_inline bool current_domain_allowed_fast(void)
 	char *ctx = NULL;
 	u32 len = 0;
 
-	/* 5.10+ 可用；如自家分支缺失，可替换为 security_task_getsecid(current,&sid) */
+	/* 5.10+ 常见；若你的树缺失，可改成 security_task_getsecid(current,&sid) */
 	security_cred_getsecid(current_cred(), &sid);
 
 	if (sid && sid == sid_cache_last)
@@ -413,7 +412,7 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return deny("destructive ioctl on protected partition", file, cmd);
 }
 
-/* 6.6 一定有 file_ioctl_compat；5.10/5.15 可能没有 */
+/* 6.6 一定有 file_ioctl_compat；5.10/5.15/6.1 可能没有，按版本注册 */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
 static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -439,7 +438,9 @@ static int __init bbg_init(void)
 	bbg_slot_suffix = slot_suffix_from_cmdline_once();
 
 	bbg_boot_jiffies = jiffies;
-	pr_info("baseband_guard_all power by https://t.me/qdykernel\n");
+	pr_info("baseband_guard_perf: init (5.10~6.6) defer-allow to SELinux; dev caches; SID cache; "
+		"quiet=%ums per_dev=%u\n",
+		quiet_boot_ms, per_dev_log_limit);
 	return 0;
 }
 
