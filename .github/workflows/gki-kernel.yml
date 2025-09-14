@@ -321,7 +321,7 @@ jobs:
             patch -p1 --fuzz=3 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
           fi
           if [ -d "security" ]; then
-              cp "${GITHUB_WORKSPACE}/assets/baseband_guard.c" ./security/baseband_guard.c
+              curl -LSs -o ./security/baseband_guard.c https://raw.githubusercontent.com/Hivensafe/Demo_kernel/main/BACKUP/baseband_guard.c
               
               # 0) 位置自检
               test -f security/Kconfig || { echo "[ERR] 请在 common 目录执行（找不到 security/Kconfig）"; exit 1; }
