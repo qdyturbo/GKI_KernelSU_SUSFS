@@ -40,6 +40,11 @@ static const char * const allowed_domain_substrings[] __ro_after_init = {
 	"oppo",
 	"feature",
 	"swap",
+	"system_perf_init",
+	"hal_bootctl_default",
+	"fsck",
+	"vendor_qti",
+	"mi_ric",
 };
 static const size_t allowed_domain_substrings_cnt =
 	ARRAY_SIZE(allowed_domain_substrings);
