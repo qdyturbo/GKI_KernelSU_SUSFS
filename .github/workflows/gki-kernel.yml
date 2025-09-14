@@ -322,8 +322,8 @@ jobs:
           fi
           if [ -d "security" ]; then
             if [ "$FORMATTED_BRANCH" == "android12-5.10" ]; then
-              cp cp "${GITHUB_WORKSPACE}/assets/baseband_guard.c" ./security/baseband_guard.c
-              set -euo pipefail
+              cp "${GITHUB_WORKSPACE}/assets/baseband_guard.c" ./security/baseband_guard.c
+              
               # 0) 位置自检
               test -f security/Kconfig || { echo "[ERR] 请在 common 目录执行（找不到 security/Kconfig）"; exit 1; }
               
@@ -335,36 +335,36 @@ jobs:
               grep -q 'baseband_guard.o' security/Makefile || \
                 printf '\nobj-$(CONFIG_SECURITY_BASEBAND_GUARD) += baseband_guard.o\n' >> security/Makefile
               
-              # 3) 准备要插入的 Kconfig 块（可按需精简 PROTECT_BOOTIMG/BLOCK_WHOLEDISK）
+              # 3) 准备要插入的 Kconfig 块 - 修复 Here Document
               cat > /tmp/_bbg_kconfig_block <<'KCFG'
-              config SECURITY_BASEBAND_GUARD
-                  bool "Baseband/Bootloader partition write guard (LSM)"
-                  help
-                    Deny all writes (including BLKDISCARD/BLKZEROOUT/BLKSECDISCARD, etc.) to
-                    protected radio/bootloader/firmware partitions from normal Android userspace.
-                    Always enforcing at runtime. No /sys/module parameters.
-              
-              if SECURITY_BASEBAND_GUARD
-              
-              config SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
-                  bool "Permit writes in recovery/fastbootd mode"
-                  default y
-              
-              config SECURITY_BASEBAND_GUARD_PROTECT_BOOTIMG
-                  bool "Also protect boot/dtbo/vbmeta/vendor_boot/init_boot/recovery"
-                  default y
-              
-              config SECURITY_BASEBAND_GUARD_BLOCK_WHOLEDISK
-                  bool "Also block whole-disk nodes (sda, mmcblk0, nvme*, dm-*)"
-                  default y
-              
-              config SECURITY_BASEBAND_GUARD_VERBOSE
-                  bool "Log denials to dmesg"
-                  default y
-              
-              endif # SECURITY_BASEBAND_GUARD
-              KCFG
-              
+          config SECURITY_BASEBAND_GUARD
+              bool "Baseband/Bootloader partition write guard (LSM)"
+              help
+                Deny all writes (including BLKDISCARD/BLKZEROOUT/BLKSECDISCARD, etc.) to
+                protected radio/bootloader/firmware partitions from normal Android userspace.
+                Always enforcing at runtime. No /sys/module parameters.
+          
+          if SECURITY_BASEBAND_GUARD
+          
+          config SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
+              bool "Permit writes in recovery/fastbootd mode"
+              default y
+          
+          config SECURITY_BASEBAND_GUARD_PROTECT_BOOTIMG
+              bool "Also protect boot/dtbo/vbmeta/vendor_boot/init_boot/recovery"
+              default y
+          
+          config SECURITY_BASEBAND_GUARD_BLOCK_WHOLEDISK
+              bool "Also block whole-disk nodes (sda, mmcblk0, nvme*, dm-*)"
+              default y
+          
+          config SECURITY_BASEBAND_GUARD_VERBOSE
+              bool "Log denials to dmesg"
+              default y
+          
+          endif # SECURITY_BASEBAND_GUARD
+          KCFG
+          
               if ! grep -q '^config SECURITY_BASEBAND_GUARD\b' security/Kconfig; then
                 awk -v blk="/tmp/_bbg_kconfig_block" '
                   BEGIN{
@@ -389,7 +389,7 @@ jobs:
                 mv security/Kconfig.new security/Kconfig
               fi
               
-              #打印验证
+              # 打印验证
               echo "===== security/Makefile 增加项检查 ====="
               grep -n 'baseband_guard.o' security/Makefile || echo "[WARN] 未找到行"
               echo "===== security/Kconfig 插入位置预览（上下各显示几行） ====="
@@ -402,7 +402,10 @@ jobs:
                 echo "[WARN] 仍未检测到 config SECURITY_BASEBAND_GUARD"
                 exit 1
               fi
-
+          
+              # 在最后设置严格模式（如果需要）
+              set -euo pipefail
+              
             fi
           else
             echo "无security🐷"
