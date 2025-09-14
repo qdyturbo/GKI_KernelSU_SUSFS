@@ -76,43 +76,36 @@ static const char *slot_suffix_from_cmdline_once(void)
 	return NULL;
 }
 
-/* ===== by-name → dev_t (兼容 5.10/6.x 两种原型) ===== */
+/* ===== by-name → dev_t（统一实现，兼容 5.10~6.6；不再依赖 lookup_bdev 原型） ===== */
 static __always_inline bool resolve_byname_dev(const char *name, dev_t *out)
 {
 	char *path;
-	dev_t dev;
+	struct path p;
+	struct inode *inode;
+	int ret;
 
 	if (!name || !out) return false;
 
+	/* /dev/block/by-name/<name> 可能是符号链接；用 LOOKUP_FOLLOW 跟随到最终的设备节点 */
 	path = kasprintf(GFP_ATOMIC, "%s/%s", BB_BYNAME_DIR, name);
 	if (!path) return false;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,15,0)
-	/* 5.10: lookup_bdev(const char *) → struct block_device* */
-	{
-		struct block_device *bdev = lookup_bdev(path);
-		kfree(path);
-		if (IS_ERR(bdev))
-			return false;
-		dev = bdev->bd_dev;
-		bdput(bdev);
-	}
-#else
-	/* 5.15+/6.x: int lookup_bdev(const char *, dev_t *) */
-	{
-		int ret;
-		dev_t tmp;
-		ret = lookup_bdev(path, &tmp);
-		kfree(path);
-		if (ret)
-			return false;
-		dev = tmp;
-	}
-#endif
+	ret = kern_path(path, LOOKUP_FOLLOW, &p);
+	kfree(path);
+	if (ret)
+		return false;
 
-	*out = dev;
+	inode = d_backing_inode(p.dentry);
+	if (!inode || !S_ISBLK(inode->i_mode)) {
+		path_put(&p);
+		return false;
+	}
+
+	*out = inode->i_rdev;
+	path_put(&p);
 	return true;
 }
+
 
 /* ===== Allowed dev_t cache ===== */
 struct allow_node { dev_t dev; struct hlist_node h; };
