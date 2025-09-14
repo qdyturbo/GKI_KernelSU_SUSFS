@@ -86,7 +86,6 @@ static __always_inline bool resolve_byname_dev(const char *name, dev_t *out)
 
 	if (!name || !out) return false;
 
-	/* /dev/block/by-name/<name> 多为符号链接；FOLLOW 到最终设备节点 */
 	path = kasprintf(GFP_ATOMIC, "%s/%s", BB_BYNAME_DIR, name);
 	if (!path) return false;
 
@@ -200,15 +199,15 @@ static __always_inline bool reverse_allow_match_and_cache(dev_t cur)
 }
 
 /* ===== SELinux enforcing + domain whitelist (substring) ===== */
+/* 兼容 5.10~6.6：不用 <linux/selinux.h>，只做弱依赖外部符号 */
 #ifdef CONFIG_SECURITY_SELINUX
-#include <linux/selinux.h>   /* selinux_is_enabled() */
-extern int selinux_enforcing; /* 若树上无该符号，可在函数里改为保守返回 false */
+extern int selinux_enforcing;
+extern int selinux_enabled;
 
 static __always_inline bool selinux_is_enforcing_now(void)
 {
-	if (!selinux_is_enabled())
+	if (!READ_ONCE(selinux_enabled))
 		return false;
-	/* 若链接时报 undefined reference，可替换为 `return false;`（保守：非 Enforcing 不放行域） */
 	return READ_ONCE(selinux_enforcing) != 0;
 }
 #else
@@ -229,7 +228,6 @@ static __always_inline bool current_domain_allowed_fast(void)
 	char *ctx = NULL;
 	u32 len = 0;
 
-	/* 5.10+ 常见接口；若你的树缺失，可换 security_task_getsecid(current, &sid); */
 	security_cred_getsecid(current_cred(), &sid);
 
 	if (sid && sid == sid_cache_last)
@@ -427,6 +425,7 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return deny("destructive ioctl on protected partition", file, cmd);
 }
 
+/* 6.6 一定有 file_ioctl_compat；5.10/5.15/6.1 可能没有，按版本注册 */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
 static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -435,6 +434,7 @@ static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned lo
 #define BB_HAVE_IOCTL_COMPAT 1
 #endif
 
+/* ===== LSM registration ===== */
 static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(file_permission,   bb_file_permission),
 	LSM_HOOK_INIT(file_ioctl,        bb_file_ioctl),
@@ -463,3 +463,4 @@ DEFINE_LSM(baseband_guard) = {
 MODULE_DESCRIPTION("protect ALL form TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼&https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
